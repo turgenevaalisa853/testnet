@@ -1,0 +1,50 @@
+name: gorodok eht
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  make-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Secure Update
+        run: |
+          # 1. Рандомна затримка
+          sleep $((RANDOM % 1800))
+          
+          # 2. Шанс на пропуск для органічного вигляду (20%)
+          if [ $((RANDOM % 10)) -lt 2 ]; then
+            echo "Organic skip."
+            exit 0
+          fi
+
+          TIMESTAMP=$(date "+%Y-%m-%d %H:%M")
+
+          # 3. Спроба отримати дані з API (з тайм-аутом 10 сек)
+          RESPONSE=$(curl -s --max-time 10 "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd")
+          ETH=$(echo $RESPONSE | jq -r '.ethereum.usd // empty')
+
+          # 4. Перевірка результату: якщо API видало помилку, використовуємо системний лог
+          if [ -z "$ETH" ] || [ "$ETH" == "null" ]; then
+            LOG_ENTRY="[$TIMESTAMP] Background task: completed"
+            COMMIT_MSG="system: heartbeat update $TIMESTAMP [skip ci]"
+          else
+            LOG_ENTRY="[$TIMESTAMP] Market Report: ETH at \$$ETH USD"
+            COMMIT_MSG="data: eth price update $TIMESTAMP [skip ci]"
+          fi
+
+          echo "$LOG_ENTRY" >> daily_stats.csv
+          echo "$(tail -n 57 daily_stats.csv)" > daily_stats.csv
+
+          # 6. Налаштування Git та Пуш
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          
+          git add daily_stats.csv
+          git commit -m "$COMMIT_MSG"
+          git push
